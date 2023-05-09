@@ -7,6 +7,16 @@
 
 using namespace Eigen;
 
+static uint64_t read_cycles() {
+    uint64_t cycles;
+    asm volatile ("rdcycle %0" : "=r" (cycles));
+    return cycles;
+
+    // const uint32_t * mtime = (uint32_t *)(33554432 + 0xbff8);
+    // const uint32_t * mtime = (uint32_t *)(33554432 + 0xbffc);
+    // return *mtime;
+}
+
 // Function to solve the finite-horizon discrete time LQR problem using Riccati recursion
 Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizon(const Matrix<float, Dynamic, Dynamic, RowMajor>& A, const Matrix<float, Dynamic, Dynamic, RowMajor>& B, const Matrix<float, Dynamic, Dynamic, RowMajor>& Q, const Matrix<float, Dynamic, Dynamic, RowMajor>& R, int horizon) {
     int state_dim = A.rows();
@@ -45,9 +55,9 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonSingleOp(const Ma
     Matrix<float, Dynamic, Dynamic, RowMajor> APA(state_dim, state_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> BPB_R_inv(input_dim, input_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> BPAK_Q(state_dim, state_dim);
-    std::cout << "P rows: " << P.rows() << ", cols: " << P.cols() << std::endl;
-    std::cout << "A rows: " << A.rows() << ", cols: " << A.cols() << std::endl;
-    std::cout << "B rows: " << B.rows() << ", cols: " << B.cols() << std::endl;
+    // std::cout << "P rows: " << P.rows() << ", cols: " << P.cols() << std::endl;
+    // std::cout << "A rows: " << A.rows() << ", cols: " << A.cols() << std::endl;
+    // std::cout << "B rows: " << B.rows() << ", cols: " << B.cols() << std::endl;
 
     P = Q;
     // Perform the Riccati recursion
@@ -92,7 +102,8 @@ void tiled_matmul_auto_eigen_bias (
     const Matrix<float, Dynamic, Dynamic, RowMajor>&D,
     Matrix<float, Dynamic, Dynamic, RowMajor>&C,
     bool transpose_A,
-    bool transpose_B ) 
+    bool transpose_B,
+    bool sub ) 
 {
         int i = transpose_A ? A.cols() : A.rows();
         int j = transpose_B ? B.rows() : B.cols();
@@ -100,7 +111,7 @@ void tiled_matmul_auto_eigen_bias (
         tiled_matmul_auto(i, j, k,
                 A.data(), B.data(), D.data() , C.data(),
                 k, j, j, j,
-                MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
+                MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, sub ? -MVIN_SCALE_IDENTITY : MVIN_SCALE_IDENTITY,
                 NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
                 transpose_A, transpose_B,
                 false, false,
@@ -131,9 +142,9 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Ma
     Matrix<float, Dynamic, Dynamic, RowMajor> APA(state_dim, state_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> BPB_R_inv(input_dim, input_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> BPAK_Q(state_dim, state_dim);
-    std::cout << "P rows: " << P.rows() << ", cols: " << P.cols() << std::endl;
-    std::cout << "A rows: " << A.rows() << ", cols: " << A.cols() << std::endl;
-    std::cout << "B rows: " << B.rows() << ", cols: " << B.cols() << std::endl;
+    // std::cout << "P rows: " << P.rows() << ", cols: " << P.cols() << std::endl;
+    // std::cout << "A rows: " << A.rows() << ", cols: " << A.cols() << std::endl;
+    // std::cout << "B rows: " << B.rows() << ", cols: " << B.cols() << std::endl;
 
     P = Q;
     // Perform the Riccati recursion
@@ -141,14 +152,15 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Ma
         // PA = P * A;
         tiled_matmul_auto_eigen(P, A, PA, false, false);
         tiled_matmul_auto_eigen(P, B, PB, false, false);
-        tiled_matmul_auto_eigen_bias(BT, PB, R, BPB_R, false, false);
+        tiled_matmul_auto_eigen_bias(BT, PB, R, BPB_R, false, false, false);
         tiled_matmul_auto_eigen(BT, PA, BPA, false, false);
         tiled_matmul_auto_eigen(AT, PA, APA, false, false);
         BPB_R_inv = BPB_R.inverse(); // CPU
         tiled_matmul_auto_eigen(BPB_R_inv, BPA, K[t], false, false);
         BPAT = BPA.transpose().eval();
-        tiled_matmul_auto_eigen_bias(BPAT, K[t], Q, BPAK_Q, false, false);
-        P = APA - BPAK_Q;
+        tiled_matmul_auto_eigen_bias(BPAT, K[t], Q, BPAK_Q, false, false, false);
+        tiled_matmul_auto_eigen_bias(AT, PA, BPAK_Q, P, false, false, true);
+        // P = APA - BPAK_Q;
     }
     return K[0];
 }
@@ -187,6 +199,12 @@ int main(int argc, char* argv[]) {
     int input_dim = std::stoi(argv[2]);
     int horizon   = std::stoi(argv[3]);
 
+    uint64_t t0;
+    uint64_t t1;
+    uint64_t time1;
+    uint64_t time2;
+    uint64_t time3;
+
     // Initialize the random number generator
     std::srand(static_cast<unsigned>(std::time(0)));
 
@@ -205,17 +223,29 @@ int main(int argc, char* argv[]) {
     R = R.transpose() * R; // Make R symmetric and positive definite
 
     // Solve the finite-horizon LQR problem
+    t0 = read_cycles();
     Matrix<float, Dynamic, Dynamic, RowMajor> K = lqrSolveFiniteHorizon(A, B, Q, R, horizon);
-    Matrix<float, Dynamic, Dynamic, RowMajor> K2 = lqrSolveFiniteHorizonSingleOp(A, B, Q, R, horizon);
-    Matrix<float, Dynamic, Dynamic, RowMajor> K3 = lqrSolveFiniteHorizonGemminiC(A, B, Q, R, horizon);
+    t1 = read_cycles();
+    time1 = t1 - t0;
 
-    std::cout << "Optimal gain matrix K:" << std::endl;
+    t0 = read_cycles();
+    Matrix<float, Dynamic, Dynamic, RowMajor> K2 = lqrSolveFiniteHorizonSingleOp(A, B, Q, R, horizon);
+    t1 = read_cycles();
+    time2 = t1 - t0;
+    t0 = read_cycles();
+
+    t0 = read_cycles();
+    Matrix<float, Dynamic, Dynamic, RowMajor> K3 = lqrSolveFiniteHorizonGemminiC(A, B, Q, R, horizon);
+    t1 = read_cycles();
+    time3 = t1 - t0;
+
+    std::cout << "Optimal gain matrix K:  (" << time1 << " )" << std::endl;
     std::cout << K << std::endl;
 
-    std::cout << "Optimal gain matrix K2:" << std::endl;
-    std::cout << K2 << std::endl;
+    std::cout << "Optimal gain matrix K2: (" << time2 << " )" << std::endl;
+    // std::cout << K2 << std::endl;
 
-    std::cout << "Optimal gain matrix K3:" << std::endl;
+    std::cout << "Optimal gain matrix K3: (" << time3 << " )" << std::endl;
     std::cout << K3 << std::endl;
 
     return 0;
