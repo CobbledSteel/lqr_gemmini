@@ -65,12 +65,62 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonSingleOp(const Ma
     return K[0];
 }
 
+void tiled_matmul_auto_eigen (
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&A,
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&B,
+    Matrix<float, Dynamic, Dynamic, RowMajor>&C,
+    bool transpose_A, bool transpose_B) 
+{
+        int i = transpose_A ? A.cols() : A.rows();
+        int j = transpose_B ? B.rows() : B.cols();
+        int k = transpose_B ? B.cols() : B.rows();
+        tiled_matmul_auto(i, j, k,
+                A.data(), B.data(), NULL, C.data(),
+                k, j, j, j,
+                MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
+                NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
+                transpose_A, transpose_B,
+                false, false,
+                0,
+                WS
+                );
+}
+
+void tiled_matmul_auto_eigen_bias (
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&A,
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&B,
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&D,
+    Matrix<float, Dynamic, Dynamic, RowMajor>&C,
+    bool transpose_A,
+    bool transpose_B ) 
+{
+        int i = transpose_A ? A.cols() : A.rows();
+        int j = transpose_B ? B.rows() : B.cols();
+        int k = transpose_B ? B.cols() : B.rows();
+        tiled_matmul_auto(i, j, k,
+                A.data(), B.data(), D.data() , C.data(),
+                k, j, j, j,
+                MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
+                NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
+                transpose_A, transpose_B,
+                false, false,
+                0,
+                WS
+                );
+}
+
 Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Matrix<float, Dynamic, Dynamic, RowMajor>& A, const Matrix<float, Dynamic, Dynamic, RowMajor>& B, const Matrix<float, Dynamic, Dynamic, RowMajor>& Q, const Matrix<float, Dynamic, Dynamic, RowMajor>& R, int horizon) {
     const int state_dim = A.rows();
     const int input_dim = B.cols();
 
     // Initialize the gain matrices
     std::vector<Matrix<float, Dynamic, Dynamic, RowMajor>> K(horizon, Matrix<float, Dynamic, Dynamic, RowMajor>::Zero(input_dim, state_dim));
+
+    Matrix<float, Dynamic, Dynamic, RowMajor> BT(input_dim, state_dim);
+    BT = B.transpose().eval();
+    Matrix<float, Dynamic, Dynamic, RowMajor> AT(input_dim, state_dim);
+    AT = A.transpose().eval();
+    Matrix<float, Dynamic, Dynamic, RowMajor> BPAT(state_dim, input_dim);
 
     // Initialize the value function matrix
     Matrix<float, Dynamic, Dynamic, RowMajor> P(state_dim, state_dim);
@@ -89,34 +139,15 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Ma
     // Perform the Riccati recursion
     for (int t = horizon - 1; t >= 0; --t) {
         // PA = P * A;
-        tiled_matmul_auto(state_dim, state_dim, state_dim, 
-                     P.data(), A.data(), NULL, PA.data(),
-                     1, 1, 1, 1,
-                     1, 1, 1,
-                     0, 1, 0, 0,
-                     false, false,
-                     false, false,
-                     0,
-                     OS
-                     );
-// static void tiled_matmul(size_t dim_I, size_t dim_J, size_t dim_K,
-//         const elem_t* A, const elem_t* B,
-//         const void * D, void* C,
-//         size_t stride_A, size_t stride_B, size_t stride_D, size_t stride_C,
-//         scale_t A_scale_factor, scale_t B_scale_factor, scale_acc_t D_scale_factor,
-//         int act, acc_scale_t scale, size_t relu6_shift, bool repeating_bias,
-//         size_t tile_I, size_t tile_J, size_t tile_K,
-//         bool transpose_A, bool transpose_B,
-//         bool full_C, bool low_D,
-//         uint8_t weightA,
-//         enum tiled_matmul_type_t tiled_matmul_type) {
-        PB = P * B;
-        BPB_R = B.transpose() * PB + R;
-        BPA = B.transpose() * PA;
-        APA = A.transpose() * PA;
+        tiled_matmul_auto_eigen(P, A, PA, false, false);
+        tiled_matmul_auto_eigen(P, B, PB, false, false);
+        tiled_matmul_auto_eigen_bias(BT, PB, R, BPB_R, false, false);
+        tiled_matmul_auto_eigen(BT, PA, BPA, false, false);
+        tiled_matmul_auto_eigen(AT, PA, APA, false, false);
         BPB_R_inv = BPB_R.inverse(); // CPU
-        K[t] = BPB_R_inv * BPA;
-        BPAK_Q = BPA.transpose() * K[t] + Q;
+        tiled_matmul_auto_eigen(BPB_R_inv, BPA, K[t], false, false);
+        BPAT = BPA.transpose().eval();
+        tiled_matmul_auto_eigen_bias(BPAT, K[t], Q, BPAK_Q, false, false);
         P = APA - BPAK_Q;
     }
     return K[0];
@@ -156,7 +187,6 @@ int main(int argc, char* argv[]) {
     int input_dim = std::stoi(argv[2]);
     int horizon   = std::stoi(argv[3]);
 
-
     // Initialize the random number generator
     std::srand(static_cast<unsigned>(std::time(0)));
 
@@ -183,7 +213,10 @@ int main(int argc, char* argv[]) {
     std::cout << K << std::endl;
 
     std::cout << "Optimal gain matrix K2:" << std::endl;
-    std::cout << K << std::endl;
+    std::cout << K2 << std::endl;
+
+    std::cout << "Optimal gain matrix K3:" << std::endl;
+    std::cout << K3 << std::endl;
 
     return 0;
 }
