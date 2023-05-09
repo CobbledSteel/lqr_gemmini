@@ -1,8 +1,10 @@
 # Makefile for building the LQR Riccati Recursion code
 
 # Compiler settings
-CXX = g++
-CXXFLAGS = -std=c++11 
+#CXX = g++
+#CXX = riscv64-unknown-linux-gnu-g++ 
+CXX = riscv64-unknown-elf-g++ 
+CXXFLAGS = -std=c++11 -I/usr/include/eigen3 -I./include/
 
 # Source and build directories
 SRC_DIR = ./src
