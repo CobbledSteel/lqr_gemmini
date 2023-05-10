@@ -11,10 +11,6 @@ static uint64_t read_cycles() {
     uint64_t cycles;
     asm volatile ("rdcycle %0" : "=r" (cycles));
     return cycles;
-
-    // const uint32_t * mtime = (uint32_t *)(33554432 + 0xbff8);
-    // const uint32_t * mtime = (uint32_t *)(33554432 + 0xbffc);
-    // return *mtime;
 }
 
 void tiled_matmul_auto_eigen (
@@ -101,9 +97,6 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonSingleOp(const Ma
     Matrix<float, Dynamic, Dynamic, RowMajor> APA(state_dim, state_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> BPB_R_inv(input_dim, input_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> APBK_Q(state_dim, state_dim);
-    // std::cout << "P rows: " << P.rows() << ", cols: " << P.cols() << std::endl;
-    // std::cout << "A rows: " << A.rows() << ", cols: " << A.cols() << std::endl;
-    // std::cout << "B rows: " << B.rows() << ", cols: " << B.cols() << std::endl;
 
     P = Q;
     // Perform the Riccati recursion
@@ -158,30 +151,6 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Ma
     }
     return K[0];
 }
-// // This function runs a tiled matrix multiplication, with automatically
-// // calculated tiling factors
-// static void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
-//         const elem_t* A, const elem_t* B,
-//         const void * D, void * C,
-//         size_t stride_A, size_t stride_B, size_t stride_D, size_t stride_C,
-//         scale_t A_scale_factor, scale_t B_scale_factor, scale_acc_t D_scale_factor,
-//         int act, acc_scale_t scale, size_t relu6_shift, bool repeating_bias,
-//         bool transpose_A, bool transpose_B,
-//         bool full_C, bool low_D,
-//         uint8_t weightA,
-//         enum tiled_matmul_type_t tiled_matmul_type) {
-
-// static void tiled_matmul(size_t dim_I, size_t dim_J, size_t dim_K,
-//         const elem_t* A, const elem_t* B,
-//         const void * D, void* C,
-//         size_t stride_A, size_t stride_B, size_t stride_D, size_t stride_C,
-//         scale_t A_scale_factor, scale_t B_scale_factor, scale_acc_t D_scale_factor,
-//         int act, acc_scale_t scale, size_t relu6_shift, bool repeating_bias,
-//         size_t tile_I, size_t tile_J, size_t tile_K,
-//         bool transpose_A, bool transpose_B,
-//         bool full_C, bool low_D,
-//         uint8_t weightA,
-//         enum tiled_matmul_type_t tiled_matmul_type) {
 
 int main(int argc, char* argv[]) {
     if (argc != 4) {
@@ -201,40 +170,6 @@ int main(int argc, char* argv[]) {
 
     // Initialize the random number generator
     std::srand(static_cast<unsigned>(std::time(0)));
-
-    // Matrix<float, Dynamic, Dynamic, RowMajor> TestA(4,3);
-    // Matrix<float, Dynamic, Dynamic, RowMajor> I(4,4);
-    // Matrix<float, Dynamic, Dynamic, RowMajor> TestC(3, 4);
-    // Matrix<float, Dynamic, Dynamic, RowMajor> TestCGemmini(3, 4);
-
-    // I.setIdentity();
-    // TestA.setRandom();
-
-
-    // int counter = 1;
-    // for (int i = 0; i < TestA.rows(); ++i) {
-    //     for (int j = 0; j < TestA.cols(); ++j) {
-    //         TestA(i, j) = counter;
-    //         counter++;
-    //     }
-    // }
-
-
-    // TestC = TestA.transpose() * I;
-    // tiled_matmul_auto_eigen(TestA, I, TestCGemmini, true, false);
-    // TestC = I * TestA.transpose() ;
-    // tiled_matmul_auto_eigen(I, TestA, TestCGemmini, false, true);
-
-    // std::cout << "TestA" << std::endl;
-    // std::cout << TestA << std::endl;
-
-    // std::cout << "TestC" << std::endl;
-    // std::cout << TestC << std::endl;
-
-    // std::cout << "TestCGemmini" << std::endl;
-    // std::cout << TestCGemmini << std::endl;
-
-
 
     // Define the system matrices A and B with random values
     Matrix<float, Dynamic, Dynamic, RowMajor> A(state_dim, state_dim);
