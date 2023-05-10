@@ -17,6 +17,52 @@ static uint64_t read_cycles() {
     // return *mtime;
 }
 
+void tiled_matmul_auto_eigen (
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&A,
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&B,
+    Matrix<float, Dynamic, Dynamic, RowMajor>&C,
+    bool transpose_A, bool transpose_B) 
+{
+        int i = transpose_A ? A.cols() : A.rows();
+        int j = transpose_B ? B.rows() : B.cols();
+        int k = transpose_B ? B.cols() : B.rows();
+        tiled_matmul_auto(i, j, k,
+                A.data(), B.data(), NULL, C.data(),
+                transpose_A ? i : k, transpose_B ? k : j, j, j,
+                MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
+                NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
+                transpose_A, transpose_B,
+                false, false,
+                0,
+                WS
+                );
+}
+
+void tiled_matmul_auto_eigen_bias (
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&A,
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&B,
+    const Matrix<float, Dynamic, Dynamic, RowMajor>&D,
+    Matrix<float, Dynamic, Dynamic, RowMajor>&C,
+    bool transpose_A,
+    bool transpose_B,
+    bool sub ) 
+{
+        int i = transpose_A ? A.cols() : A.rows();
+        int j = transpose_B ? B.rows() : B.cols();
+        int k = transpose_B ? B.cols() : B.rows();
+        tiled_matmul_auto(i, j, k,
+                A.data(), B.data(), D.data() , C.data(),
+                transpose_A ? i : k, transpose_B ? k : j, j, j,
+                MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, sub ? -MVIN_SCALE_IDENTITY : MVIN_SCALE_IDENTITY,
+                NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
+                transpose_A, transpose_B,
+                false, false,
+                0,
+                WS
+                );
+}
+
+
 // Function to solve the finite-horizon discrete time LQR problem using Riccati recursion
 Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizon(const Matrix<float, Dynamic, Dynamic, RowMajor>& A, const Matrix<float, Dynamic, Dynamic, RowMajor>& B, const Matrix<float, Dynamic, Dynamic, RowMajor>& Q, const Matrix<float, Dynamic, Dynamic, RowMajor>& R, int horizon) {
     int state_dim = A.rows();
@@ -73,51 +119,6 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonSingleOp(const Ma
         P = APA - APBK_Q;
     }
     return K[0];
-}
-
-void tiled_matmul_auto_eigen (
-    const Matrix<float, Dynamic, Dynamic, RowMajor>&A,
-    const Matrix<float, Dynamic, Dynamic, RowMajor>&B,
-    Matrix<float, Dynamic, Dynamic, RowMajor>&C,
-    bool transpose_A, bool transpose_B) 
-{
-        int i = transpose_A ? A.cols() : A.rows();
-        int j = transpose_B ? B.rows() : B.cols();
-        int k = transpose_B ? B.cols() : B.rows();
-        tiled_matmul_auto(i, j, k,
-                A.data(), B.data(), NULL, C.data(),
-                transpose_A ? i : k, transpose_B ? k : j, j, j,
-                MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
-                NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
-                transpose_A, transpose_B,
-                false, false,
-                0,
-                WS
-                );
-}
-
-void tiled_matmul_auto_eigen_bias (
-    const Matrix<float, Dynamic, Dynamic, RowMajor>&A,
-    const Matrix<float, Dynamic, Dynamic, RowMajor>&B,
-    const Matrix<float, Dynamic, Dynamic, RowMajor>&D,
-    Matrix<float, Dynamic, Dynamic, RowMajor>&C,
-    bool transpose_A,
-    bool transpose_B,
-    bool sub ) 
-{
-        int i = transpose_A ? A.cols() : A.rows();
-        int j = transpose_B ? B.rows() : B.cols();
-        int k = transpose_B ? B.cols() : B.rows();
-        tiled_matmul_auto(i, j, k,
-                A.data(), B.data(), D.data() , C.data(),
-                transpose_A ? i : k, transpose_B ? k : j, j, j,
-                MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, sub ? -MVIN_SCALE_IDENTITY : MVIN_SCALE_IDENTITY,
-                NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
-                transpose_A, transpose_B,
-                false, false,
-                0,
-                WS
-                );
 }
 
 Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Matrix<float, Dynamic, Dynamic, RowMajor>& A, const Matrix<float, Dynamic, Dynamic, RowMajor>& B, const Matrix<float, Dynamic, Dynamic, RowMajor>& Q, const Matrix<float, Dynamic, Dynamic, RowMajor>& R, int horizon) {
