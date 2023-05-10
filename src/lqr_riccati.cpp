@@ -54,7 +54,7 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonSingleOp(const Ma
     Matrix<float, Dynamic, Dynamic, RowMajor> BPA(input_dim, state_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> APA(state_dim, state_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> BPB_R_inv(input_dim, input_dim);
-    Matrix<float, Dynamic, Dynamic, RowMajor> BPAK_Q(state_dim, state_dim);
+    Matrix<float, Dynamic, Dynamic, RowMajor> APBK_Q(state_dim, state_dim);
     // std::cout << "P rows: " << P.rows() << ", cols: " << P.cols() << std::endl;
     // std::cout << "A rows: " << A.rows() << ", cols: " << A.cols() << std::endl;
     // std::cout << "B rows: " << B.rows() << ", cols: " << B.cols() << std::endl;
@@ -69,8 +69,8 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonSingleOp(const Ma
         APA = A.transpose() * PA;
         BPB_R_inv = BPB_R.inverse(); // CPU
         K[t] = BPB_R_inv * BPA;
-        BPAK_Q = BPA.transpose() * K[t] + Q;
-        P = APA - BPAK_Q;
+        APBK_Q = BPA.transpose() * K[t] - Q;
+        P = APA - APBK_Q;
     }
     return K[0];
 }
@@ -141,7 +141,7 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Ma
     Matrix<float, Dynamic, Dynamic, RowMajor> BPA(input_dim, state_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> APA(state_dim, state_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> BPB_R_inv(input_dim, input_dim);
-    Matrix<float, Dynamic, Dynamic, RowMajor> BPAK_Q(state_dim, state_dim);
+    Matrix<float, Dynamic, Dynamic, RowMajor> APBK_Q(state_dim, state_dim);
     // std::cout << "P rows: " << P.rows() << ", cols: " << P.cols() << std::endl;
     // std::cout << "A rows: " << A.rows() << ", cols: " << A.cols() << std::endl;
     // std::cout << "B rows: " << B.rows() << ", cols: " << B.cols() << std::endl;
@@ -149,18 +149,15 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Ma
     P = Q;
     // Perform the Riccati recursion
     for (int t = horizon - 1; t >= 0; --t) {
-        // PA = P * A;
-        tiled_matmul_auto_eigen(P, A, PA, false, false);
         tiled_matmul_auto_eigen(P, B, PB, false, false);
         tiled_matmul_auto_eigen_bias(BT, PB, R, BPB_R, false, false, false);
+        tiled_matmul_auto_eigen(P, A, PA, false, false);
         tiled_matmul_auto_eigen(BT, PA, BPA, false, false);
-        tiled_matmul_auto_eigen(AT, PA, APA, false, false);
         BPB_R_inv = BPB_R.inverse(); // CPU
         tiled_matmul_auto_eigen(BPB_R_inv, BPA, K[t], false, false);
         BPAT = BPA.transpose().eval();
-        tiled_matmul_auto_eigen_bias(BPAT, K[t], Q, BPAK_Q, false, false, false);
-        tiled_matmul_auto_eigen_bias(AT, PA, BPAK_Q, P, false, false, true);
-        // P = APA - BPAK_Q;
+        tiled_matmul_auto_eigen_bias(BPAT, K[t], Q, APBK_Q, false, false, true);
+        tiled_matmul_auto_eigen_bias(AT, PA, APBK_Q, P, false, false, true);
     }
     return K[0];
 }
@@ -243,7 +240,7 @@ int main(int argc, char* argv[]) {
     std::cout << K << std::endl;
 
     std::cout << "Optimal gain matrix K2: (" << time2 << " )" << std::endl;
-    // std::cout << K2 << std::endl;
+    std::cout << K2 << std::endl;
 
     std::cout << "Optimal gain matrix K3: (" << time3 << " )" << std::endl;
     std::cout << K3 << std::endl;
