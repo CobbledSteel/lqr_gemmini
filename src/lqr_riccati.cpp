@@ -86,7 +86,7 @@ void tiled_matmul_auto_eigen (
         int k = transpose_B ? B.cols() : B.rows();
         tiled_matmul_auto(i, j, k,
                 A.data(), B.data(), NULL, C.data(),
-                k, j, j, j,
+                transpose_A ? i : k, j, j, j,
                 MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
                 NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
                 transpose_A, transpose_B,
@@ -110,7 +110,7 @@ void tiled_matmul_auto_eigen_bias (
         int k = transpose_B ? B.cols() : B.rows();
         tiled_matmul_auto(i, j, k,
                 A.data(), B.data(), D.data() , C.data(),
-                k, j, j, j,
+                transpose_A ? i : k, j, j, j,
                 MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, sub ? -MVIN_SCALE_IDENTITY : MVIN_SCALE_IDENTITY,
                 NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
                 transpose_A, transpose_B,
@@ -150,14 +150,14 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Ma
     // Perform the Riccati recursion
     for (int t = horizon - 1; t >= 0; --t) {
         tiled_matmul_auto_eigen(P, B, PB, false, false);
-        tiled_matmul_auto_eigen_bias(BT, PB, R, BPB_R, false, false, false);
+        tiled_matmul_auto_eigen_bias(B, PB, R, BPB_R, true, false, false);
         tiled_matmul_auto_eigen(P, A, PA, false, false);
-        tiled_matmul_auto_eigen(BT, PA, BPA, false, false);
+        tiled_matmul_auto_eigen(B, PA, BPA, true, false);
         BPB_R_inv = BPB_R.inverse(); // CPU
+        BPAT = BPA.transpose().eval(); // CPU
         tiled_matmul_auto_eigen(BPB_R_inv, BPA, K[t], false, false);
-        BPAT = BPA.transpose().eval();
         tiled_matmul_auto_eigen_bias(BPAT, K[t], Q, APBK_Q, false, false, true);
-        tiled_matmul_auto_eigen_bias(AT, PA, APBK_Q, P, false, false, true);
+        tiled_matmul_auto_eigen_bias(A, PA, APBK_Q, P, true, false, true);
     }
     return K[0];
 }
@@ -204,6 +204,40 @@ int main(int argc, char* argv[]) {
 
     // Initialize the random number generator
     std::srand(static_cast<unsigned>(std::time(0)));
+
+    // Matrix<float, Dynamic, Dynamic, RowMajor> TestA(4,3);
+    // Matrix<float, Dynamic, Dynamic, RowMajor> I(4,4);
+    // Matrix<float, Dynamic, Dynamic, RowMajor> TestC(3, 4);
+    // Matrix<float, Dynamic, Dynamic, RowMajor> TestCGemmini(3, 4);
+
+    // I.setIdentity();
+    // TestA.setRandom();
+
+
+    // int counter = 1;
+    // for (int i = 0; i < TestA.rows(); ++i) {
+    //     for (int j = 0; j < TestA.cols(); ++j) {
+    //         TestA(i, j) = counter;
+    //         counter++;
+    //     }
+    // }
+
+
+    // TestC = TestA.transpose() * I;
+    // tiled_matmul_auto_eigen(TestA, I, TestCGemmini, true, false);
+    // TestC = I * TestA.transpose() ;
+    // tiled_matmul_auto_eigen(I, TestA, TestCGemmini, false, true);
+
+    // std::cout << "TestA" << std::endl;
+    // std::cout << TestA << std::endl;
+
+    // std::cout << "TestC" << std::endl;
+    // std::cout << TestC << std::endl;
+
+    // std::cout << "TestCGemmini" << std::endl;
+    // std::cout << TestCGemmini << std::endl;
+
+
 
     // Define the system matrices A and B with random values
     Matrix<float, Dynamic, Dynamic, RowMajor> A(state_dim, state_dim);
