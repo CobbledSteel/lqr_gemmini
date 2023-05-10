@@ -186,10 +186,10 @@ int main(int argc, char* argv[]) {
     R = R.transpose() * R; // Make R symmetric and positive definite
 
     // Solve the finite-horizon LQR problem
-    t0 = read_cycles();
-    Matrix<float, Dynamic, Dynamic, RowMajor> K = lqrSolveFiniteHorizon(A, B, Q, R, horizon);
-    t1 = read_cycles();
-    time1 = t1 - t0;
+    // t0 = read_cycles();
+    // Matrix<float, Dynamic, Dynamic, RowMajor> K = lqrSolveFiniteHorizon(A, B, Q, R, horizon);
+    // t1 = read_cycles();
+    // time1 = t1 - t0;
 
     t0 = read_cycles();
     Matrix<float, Dynamic, Dynamic, RowMajor> K2 = lqrSolveFiniteHorizonSingleOp(A, B, Q, R, horizon);
@@ -201,23 +201,23 @@ int main(int argc, char* argv[]) {
     t1 = read_cycles();
     time3 = t1 - t0;
 
-    std::cout << "Optimal gain matrix K:  (" << time1 << " )" << std::endl;
+    // std::cout << "Optimal gain matrix K:  (" << time1 << " )" << std::endl;
     // std::cout << K << std::endl;
 
     std::cout << "Optimal gain matrix K2: (" << time2 << " )" << std::endl;
-    if(!K.isApprox(K2)) {
-        std::cout << "ERROR: Differing Results" << std::endl;
-        std::cout << "K" << std::endl;
-        std::cout << K << std::endl;
-        std::cout << "K2" << std::endl;
-        std::cout << K2 << std::endl;
-    }
+    // if(!K.isApprox(K2)) {
+    //     std::cout << "ERROR: Differing Results" << std::endl;
+    //     std::cout << "K" << std::endl;
+    //     std::cout << K << std::endl;
+    //     std::cout << "K2" << std::endl;
+    //     std::cout << K2 << std::endl;
+    // }
 
     std::cout << "Optimal gain matrix K3: (" << time3 << " )" << std::endl;
-    if(!K.isApprox(K2)) {
+    if(!K3.isApprox(K2)) {
         std::cout << "ERROR: Differing Results" << std::endl;
-        std::cout << "K" << std::endl;
-        std::cout << K << std::endl;
+        std::cout << "K2" << std::endl;
+        std::cout << K2 << std::endl;
         std::cout << "K3" << std::endl;
         std::cout << K3 << std::endl;
     }
