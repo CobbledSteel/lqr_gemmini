@@ -86,7 +86,7 @@ void tiled_matmul_auto_eigen (
         int k = transpose_B ? B.cols() : B.rows();
         tiled_matmul_auto(i, j, k,
                 A.data(), B.data(), NULL, C.data(),
-                transpose_A ? i : k, j, j, j,
+                transpose_A ? i : k, transpose_B ? k : j, j, j,
                 MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
                 NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
                 transpose_A, transpose_B,
@@ -110,7 +110,7 @@ void tiled_matmul_auto_eigen_bias (
         int k = transpose_B ? B.cols() : B.rows();
         tiled_matmul_auto(i, j, k,
                 A.data(), B.data(), D.data() , C.data(),
-                transpose_A ? i : k, j, j, j,
+                transpose_A ? i : k, transpose_B ? k : j, j, j,
                 MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, sub ? -MVIN_SCALE_IDENTITY : MVIN_SCALE_IDENTITY,
                 NO_ACTIVATION, ACC_SCALE_IDENTITY, 0, false,
                 transpose_A, transpose_B,
@@ -142,9 +142,6 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Ma
     Matrix<float, Dynamic, Dynamic, RowMajor> APA(state_dim, state_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> BPB_R_inv(input_dim, input_dim);
     Matrix<float, Dynamic, Dynamic, RowMajor> APBK_Q(state_dim, state_dim);
-    // std::cout << "P rows: " << P.rows() << ", cols: " << P.cols() << std::endl;
-    // std::cout << "A rows: " << A.rows() << ", cols: " << A.cols() << std::endl;
-    // std::cout << "B rows: " << B.rows() << ", cols: " << B.cols() << std::endl;
 
     P = Q;
     // Perform the Riccati recursion
@@ -154,9 +151,8 @@ Matrix<float, Dynamic, Dynamic, RowMajor> lqrSolveFiniteHorizonGemminiC(const Ma
         tiled_matmul_auto_eigen(P, A, PA, false, false);
         tiled_matmul_auto_eigen(B, PA, BPA, true, false);
         BPB_R_inv = BPB_R.inverse(); // CPU
-        BPAT = BPA.transpose().eval(); // CPU
         tiled_matmul_auto_eigen(BPB_R_inv, BPA, K[t], false, false);
-        tiled_matmul_auto_eigen_bias(BPAT, K[t], Q, APBK_Q, false, false, true);
+        tiled_matmul_auto_eigen_bias(BPA, K[t], Q, APBK_Q, true, false, true);
         tiled_matmul_auto_eigen_bias(A, PA, APBK_Q, P, true, false, true);
     }
     return K[0];
@@ -263,7 +259,6 @@ int main(int argc, char* argv[]) {
     Matrix<float, Dynamic, Dynamic, RowMajor> K2 = lqrSolveFiniteHorizonSingleOp(A, B, Q, R, horizon);
     t1 = read_cycles();
     time2 = t1 - t0;
-    t0 = read_cycles();
 
     t0 = read_cycles();
     Matrix<float, Dynamic, Dynamic, RowMajor> K3 = lqrSolveFiniteHorizonGemminiC(A, B, Q, R, horizon);
@@ -271,13 +266,25 @@ int main(int argc, char* argv[]) {
     time3 = t1 - t0;
 
     std::cout << "Optimal gain matrix K:  (" << time1 << " )" << std::endl;
-    std::cout << K << std::endl;
+    // std::cout << K << std::endl;
 
     std::cout << "Optimal gain matrix K2: (" << time2 << " )" << std::endl;
-    std::cout << K2 << std::endl;
+    if(!K.isApprox(K2)) {
+        std::cout << "ERROR: Differing Results" << std::endl;
+        std::cout << "K" << std::endl;
+        std::cout << K << std::endl;
+        std::cout << "K2" << std::endl;
+        std::cout << K2 << std::endl;
+    }
 
     std::cout << "Optimal gain matrix K3: (" << time3 << " )" << std::endl;
-    std::cout << K3 << std::endl;
+    if(!K.isApprox(K2)) {
+        std::cout << "ERROR: Differing Results" << std::endl;
+        std::cout << "K" << std::endl;
+        std::cout << K << std::endl;
+        std::cout << "K3" << std::endl;
+        std::cout << K3 << std::endl;
+    }
 
     return 0;
 }
