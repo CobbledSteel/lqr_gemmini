@@ -12,7 +12,7 @@ BUILD_DIR = ./build
 
 # Source and target files
 SRC = $(SRC_DIR)/lqr_riccati.cpp
-TARGET = $(BUILD_DIR)/lqr_riccati
+TARGET = $(BUILD_DIR)/lqr_riccati_new
 
 # Build rules
 all: $(TARGET)
